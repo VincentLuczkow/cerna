@@ -58,9 +58,3 @@ def percentage_error(true: np.ndarray, estimate: np.ndarray, value_to_scale_by: 
     percent_error_vector = distance_vector / true
     percent_error = percent_error_vector.mean()
     return percent_error
-
-
-# Calculates least squares, where |x| = constraint
-def constrained_least_squares(matrix: np.ndarray, solution: np.ndarray, constraint: float):
-
-    pass

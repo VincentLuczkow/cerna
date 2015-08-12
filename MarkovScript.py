@@ -4,7 +4,7 @@ from sys import argv
 from getpass import getuser
 import pickle
 
-from ceRNA import Network
+from ceRNA import Network, RateTests
 
 
 def run_tests(x: int, y: int, test_type: str, start: int, stop: int):
@@ -53,12 +53,20 @@ def read_files(x: int, y: int, test_type: str):
     pickle.dump(network, open(network_file_name, "wb"))
 
 
-def aggregate_data():
+def retrieve_data() -> dict:
     try:
-        aggregate_file = open("/home/{0}/Stochpy/AggregateData", "rb")
-        data = pickle.load(aggregate_file)
-    except:
-        data = {}
+        rate_data_file = open("/home/{0}/Stochpy/AggregateData".format(getuser()), "rb")
+        rate_data = pickle.load(rate_data_file)
+        rate_data_file.close()
+    except IOError:
+        rate_data = {}
+    try:
+        estimate_data_file = open("/home/{0}/Stochpy/EstimateData".format(getuser()), "rb")
+        estimate_data = pickle.load(estimate_data_file)
+        estimate_data_file.close()
+    except IOError:
+        estimate_data = {}
+    return rate_data, estimate_data
 
 
 def setup(x: int, y: int):
@@ -69,10 +77,27 @@ def setup(x: int, y: int):
     pickle.dump(network, network_file)
 
 
-def record_data(network: Network.Network, test_type: str):
-    x = network.x
-    y = network.y
-    record_file_name = "BaseNet"
+def record_rate_data(rate_test: RateTests.RateTest, test_type: str):
+    x = rate_test.x
+    y = rate_test.y
+    rate_data = retrieve_data()[0]
+    key = "BaseNet{0},{1}{2}Rates".format(x, y, test_type)
+    ks = rate_test.ks
+    mus = rate_test.mus
+    gammas = rate_test.gammas
+    tests = rate_test.tests["sim"]
+    rate_data[key] = (ks, mus, gammas, tests)
+
+    rate_data_file = open("/home/{0}/Stochpy/AggregateData".format(getuser()), "wb")
+    pickle.dump(rate_data, rate_data_file)
+
+
+
+def record_estimate_data(estimate: RateTests.Estimator, test_type: str, x: int, y: int):
+    size = estimate.estimate_size
+    estimate_data = retrieve_data()[1]
+    key = "BaseNet{0},{1}{2}Estimates".format(x, y, test_type)
+    estimate_data[key] = (size)
 
 
 def main():

@@ -9,10 +9,10 @@ def main():
     gamma_rmse = 0
     lambda_pe = 0
     lambda_rmse = 0
-    number_of_tests = 50
+    number_of_tests = 1
     for test in range(number_of_tests):
-        x = random.randrange(5, 25)
-        y = random.randrange(5 ,25)
+        x = random.randrange(5, 10)
+        y = random.randrange(5, 10)
 
         # Set up network
         ks, mus, gammas = Network.Network.generate_parameters(x, y)
