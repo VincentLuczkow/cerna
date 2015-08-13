@@ -17,9 +17,9 @@ def main():
         # Set up network
         ks, mus, gammas = Network.Network.generate_parameters(x, y)
         current_network = Network.Network("Model", ks, mus, gammas, x, y)
-        gamma_pe += current_network.gamma_test.average_percent_error["ode"]
+        gamma_pe += current_network.gamma_test.average_relative_error["ode"]
         gamma_rmse += current_network.gamma_test.average_rmse["ode"]
-        lambda_pe += current_network.lambda_test.average_percent_error["ode"]
+        lambda_pe += current_network.lambda_test.average_relative_error["ode"]
         lambda_rmse += current_network.lambda_test.average_rmse["ode"]
     gamma_pe /= number_of_tests
     gamma_rmse /= number_of_tests

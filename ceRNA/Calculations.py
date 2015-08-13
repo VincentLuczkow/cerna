@@ -21,13 +21,16 @@ def set_sub_matrix(rows, columns, matrix, sub_matrix):
 
 
 def estimate_parameters(matrix) -> tuple:
-    u, singular_values, v = np.linalg.svd(matrix, full_matrices=True)
-    nullspace = np.compress(singular_values <= 1e-8, v, axis=0)
+    u, svs, v = np.linalg.svd(matrix, full_matrices=True)
+    # We are dealing with overdetermined systems homogeneous systems. The best solution is the column
+    # of v that corresponds to the lowest singular value. Because singular values are
+    # in descending order, this is always the last column.
+    nullspace = v[-1]
     # It doesn't really matter which direction the vector is pointing, but we do want it consistent.
     # So we scale it so that the first value is positive.
-    if nullspace[0][0] < 0:
+    if nullspace[0] < 0:
         nullspace *= -1
-    estimate = abs(nullspace[0])
+    estimate = abs(nullspace)
     return estimate
 
 

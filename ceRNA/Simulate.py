@@ -50,7 +50,7 @@ def burst_network_ode_solution(ks, mus, gammas, bursts, x, y, knockouts, gamma_c
 
 def simulate(input_file: str, output_file: str, n: int):
     simulation = stochpy.SSA(File=input_file)
-    simulation.DoCompleteStochSim()
+    simulation.DoStochSim()
     means = simulation.data_stochsim.species_means
     array = np.ones(2 * n)
     array[n:] = convert_stochpy_means_to_array(means)

@@ -42,24 +42,30 @@ class Network:
 
         usable_knockout_tests = self.select_usable_knockouts("ode")
 
-        self.knockout_lambda_test = CombinedTest(self.real_vector)
-        self.knockout_lambda_test.set_matrix(self.wild_type_test.tests["ode"],
+        self.knockout_lambda_estimator = CombinedTest(self.real_vector)
+        self.knockout_lambda_estimator.set_matrix(self.wild_type_test.tests["ode"],
                                              usable_knockout_tests,
                                              self.lambda_test.tests["ode"], "ode")
-        self.knockout_lambda_test.post_processing("ode")
+        self.knockout_lambda_estimator.post_processing("ode")
 
-        self.knockout_gamma_test = CombinedTest(self.real_vector)
-        self.knockout_gamma_test.set_matrix(self.wild_type_test.tests["ode"],
+        self.knockout_gamma_estimator = CombinedTest(self.real_vector)
+        self.knockout_gamma_estimator.set_matrix(self.wild_type_test.tests["ode"],
                                             self.knockout_test.tests["ode"],
                                             self.gamma_test.tests["ode"], "ode")
 
-        self.knockout_gamma_test.post_processing("ode")
+        self.knockout_gamma_estimator.post_processing("ode")
 
     def setup(self):
         self.wild_type_test.setup()
         self.gamma_test.setup()
         self.lambda_test.setup()
         self.knockout_test.setup()
+
+    def post_processing(self):
+        self.gamma_test.post_processing("ode")
+        self.lambda_test.post_processing("ode")
+        self.knockout_gamma_estimator.post_processing("ode")
+        self.knockout_lambda_estimator.post_processing("ode")
 
     def select_usable_knockouts(self, run_type) -> np.ndarray:
         column_map = range(2 * self.n)

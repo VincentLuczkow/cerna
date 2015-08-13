@@ -4,7 +4,7 @@ from itertools import combinations
 from multiprocessing import Process
 import pickle
 import random
-import pdb
+from pdb import set_trace
 import numpy as np
 
 from .Calculations import estimate_parameters, rmse_vector, percent_error_vector, set_sub_matrix
@@ -23,14 +23,14 @@ class Estimator:
         self.average_rmse = {}
 
         self.percent_errors = {}
-        self.average_percent_error = {}
+        self.average_relative_error = {}
 
     def print_results(self, run_type: str):
         print("{0} Results:".format(run_type))
         print("    RMSE Vector: {0}".format(self.rmses[run_type]))
         print("    Average RMSE: {0}".format(self.average_rmse[run_type]))
         print("    PE Vector: {0}".format(self.percent_errors[run_type]))
-        print("    Average PE: {0}".format(self.average_percent_error[run_type]))
+        print("    Average PE: {0}".format(self.average_relative_error[run_type]))
 
     def post_processing(self, run_type: str):
         self.estimates[run_type] = estimate_parameters(self.matrices[run_type])
@@ -39,7 +39,7 @@ class Estimator:
         self.rmses[run_type] = rmse_vector(self.real_vector, self.estimates[run_type])
         self.average_rmse[run_type] = self.rmses[run_type].mean()
         self.percent_errors[run_type] = percent_error_vector(self.real_vector, self.estimates[run_type])
-        self.average_percent_error[run_type] = self.percent_errors[run_type].mean()
+        self.average_relative_error[run_type] = self.percent_errors[run_type].mean()
 
 
 class RateTest:
@@ -112,7 +112,8 @@ class RateTest:
         self.calculate_row_accuracies("sim")
 
     def run_simulations(self, start: int, stop: int) -> int:
-        for test in range(start, stop+1):
+        actual_stop = min(stop, self.number_of_tests)
+        for test in range(start, actual_stop):
             change = test % self.number_of_changes
             # Will change to generating a separate process, eventually
             psc_file_name = self.psc_file_names[change]
