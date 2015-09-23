@@ -5,54 +5,40 @@ from multiprocessing import Process
 import pickle
 import random
 from pdb import set_trace
+
 import numpy as np
 
-from .Calculations import estimate_parameters, rmse_vector, percent_error_vector, set_sub_matrix
 from .Simulate import base_network_ode_solution, simulate
 from .NetworkFiles import create_base_network_file
-
-
-class Estimator:
-    def __init__(self, real_vector: np.ndarray):
-        self.real_vector = real_vector
-        self.estimate_size = len(real_vector)
-        self.matrices = {}
-        self.estimates = {}
-
-        self.rmses = {}
-        self.average_rmse = {}
-
-        self.percent_errors = {}
-        self.average_relative_error = {}
-
-    def print_results(self, run_type: str):
-        print("{0} Results:".format(run_type))
-        print("    RMSE Vector: {0}".format(self.rmses[run_type]))
-        print("    Average RMSE: {0}".format(self.average_rmse[run_type]))
-        print("    PE Vector: {0}".format(self.percent_errors[run_type]))
-        print("    Average PE: {0}".format(self.average_relative_error[run_type]))
-
-    def post_processing(self, run_type: str):
-        self.estimates[run_type] = estimate_parameters(self.matrices[run_type])
-
-        # Accuracy calculations
-        self.rmses[run_type] = rmse_vector(self.real_vector, self.estimates[run_type])
-        self.average_rmse[run_type] = self.rmses[run_type].mean()
-        self.percent_errors[run_type] = percent_error_vector(self.real_vector, self.estimates[run_type])
-        self.average_relative_error[run_type] = self.percent_errors[run_type].mean()
+from .Estimators import Estimator
 
 
 class RateTest:
     test_type = ""
     path_to_stochpy_folder = "/home/" + getuser() + "/Stochpy/"
 
-    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: dict, change_type: int=0):
+    def __init__(self, x: int, y: int,
+                 ks: np.ndarray,
+                 mus: np.ndarray,
+                 gammas: dict,
+                 model_type: int,
+                 alphas: np.ndarray=None,
+                 betas: np.ndarray=None):
+        # Number of mRNAs
         self.x = x
+        # Number of miRNAs
         self.y = y
         self.n = x + y
+        # Creation rates
         self.ks = ks
+        # Decay Rates
         self.mus = mus
+        # Interaction Rates
         self.gammas = gammas
+        # Burst On Rate
+        self.alphas = alphas
+        # Burst Off Rate
+        self.betas = betas
         self.number_of_tests = 0
         self.number_of_changes = 0
         self.tests = {}
@@ -93,6 +79,9 @@ class RateTest:
 
     def compute_matrix(self, matrix) -> np.ndarray:
         return np.empty([self.n, self.n])
+
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+        pass
 
     def calculate_row_accuracies(self, run_type: str):
         row_size = len(self.tests[run_type][0])
@@ -146,12 +135,19 @@ class RateTest:
         new_y = self.y - lost_y
         return
 
+
 class WildTypeTest(RateTest):
 
     test_type = "W"
 
-    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: dict):
-        RateTest.__init__(self, x, y, ks, mus, gammas)
+    def __init__(self,
+                 x: int,
+                 y: int,
+                 ks: np.ndarray,
+                 mus: np.ndarray,
+                 gammas: dict,
+                 model_type: int):
+        RateTest.__init__(self, x, y, ks, mus, gammas, model_type)
         self.change_sets = self.generate_changes()
         self.number_of_tests = 1
         self.number_of_changes = 1
@@ -159,12 +155,23 @@ class WildTypeTest(RateTest):
     def generate_changes(self, change_type: int=0):
         return [(None, None)]
 
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+        return self.tests[run_type]
+
+
 class GammaTest(RateTest, Estimator):
 
     test_type = "G"
 
-    def __init__(self, x: int, y: int, real_vector: np.ndarray, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray):
-        RateTest.__init__(self, x, y, ks, mus, gammas, 1)
+    def __init__(self,
+                 x: int,
+                 y: int,
+                 real_vector: np.ndarray,
+                 ks: np.ndarray,
+                 mus: np.ndarray,
+                 gammas: np.ndarray,
+                 model_type: int):
+        RateTest.__init__(self, x, y, ks, mus, gammas, model_type)
         self.number_of_tests = 2 * self.n
         self.number_of_changes = self.n
         Estimator.__init__(self, real_vector)
@@ -231,18 +238,31 @@ class GammaTest(RateTest, Estimator):
         matrix[-1] = tests[-1][self.n:] - tests[0][self.n:]
         return matrix
 
+    # TODO
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+        tests = self.tests[run_type]
+
 
 class LambdaTest(RateTest, Estimator):
 
     test_type = "L"
 
-    def __init__(self, x, y, real_vector, ks, mus, gammas, knockout=-1, creation_rate_changes=None):
+    def __init__(self,
+                 x: int,
+                 y: int,
+                 real_vector: np.ndarray,
+                 ks: np.ndarray,
+                 mus: np.ndarray,
+                 gammas: np.ndarray,
+                 model_type: int,
+                 knockout=-1,
+                 creation_rate_changes=None):
         if knockout is -1:
             self.knockout = random.randrange(x + y)
         else:
             self.knockout = knockout
         if not creation_rate_changes:
-            self.creation_rate_changes = self.select_creation_rate_changes(x + y, self.knockout, 5, 1, x + y - 1)
+            self.creation_rate_changes = self.select_creation_rate_changes(x+y, self.knockout, 5, 1, x+y-1)
         else:
             self.creation_rate_changes = creation_rate_changes
 
@@ -254,7 +274,6 @@ class LambdaTest(RateTest, Estimator):
         self.wild_tests = {}
         self.knockout_tests = {}
         self.change_sets = self.generate_changes()
-
 
     # Predetermines all creation rate changes for this network.
     def generate_changes(self, change_type: int=0) -> list:
@@ -269,6 +288,7 @@ class LambdaTest(RateTest, Estimator):
                 change_size = (change_size + 1) % 5
                 change_iterator = combinations(list(self.creation_rate_changes), change_size)
                 next_change = next(change_iterator)
+            print("Next change: {0}".format(next_change))
 
             actual_changes = []
             for change_set in next_change:
@@ -281,7 +301,6 @@ class LambdaTest(RateTest, Estimator):
 
             change_sets.append((new_ks, None))
             change_sets.append((new_knockout_ks, None))
-
         return change_sets
 
     def post_processing(self, run_type: str):
@@ -316,6 +335,10 @@ class LambdaTest(RateTest, Estimator):
             changes[i] = new_change
         return changes
 
+    # TODO
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+        super().prepare_rows_for_matrix(run_type, start_index, end_index)
+
 
 class KnockoutTest(RateTest):
 
@@ -335,24 +358,9 @@ class KnockoutTest(RateTest):
             change_set.append((new_ks, None))
         return change_set
 
-
-class CombinedTest(Estimator):
-    def __init__(self, real_vector):
-        Estimator.__init__(self, real_vector)
-
-    def set_matrix(self, wild_type: np.ndarray, knockouts: np.ndarray, decay: np.ndarray, run_type: str) -> int:
-        new_matrix = np.empty([self.estimate_size, self.estimate_size])
-        new_matrix[0] = wild_type
-
-        knockout_row_map = range(1, len(knockouts))
-        knockouts_column_map = range(self.estimate_size)
-        set_sub_matrix(knockout_row_map, knockouts_column_map, new_matrix, knockouts)
-
-        decay_row_map = range(len(knockouts), self.estimate_size - 1)
-        decay_column_map = range(self.estimate_size)
-        set_sub_matrix(decay_row_map, decay_column_map, new_matrix, decay)
-        new_matrix[self.estimate_size-1] = np.zeros(self.estimate_size)
-        self.matrices[run_type] = new_matrix
+    # TODO
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+        super().prepare_rows_for_matrix(run_type, start_index, end_index)
 
 
 def row_accuracy(x: int, y: int, ks: np.ndarray, mus: np.ndarray, row: np.ndarray):

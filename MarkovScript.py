@@ -6,6 +6,7 @@ import pickle
 from pdb import set_trace
 
 from ceRNA import Network, RateTests
+import ceRNA.Estimators
 
 
 def main():
@@ -22,7 +23,7 @@ def main():
         read_files(x, y, argv[4])
     elif argv[1] == "create":
         ks, mus, gammas = Network.Network.generate_parameters(x, y)
-        network = Network.Network("Model", ks, mus, gammas, x, y)
+        network = Network.Network(x, y, ks, mus, gammas)
         pickle.dump(network, open("/home/{0}/Stochpy/Network{1},{2}".format(getuser(), x, y), "wb"))
 
     return 0
@@ -30,7 +31,7 @@ def main():
 
 def setup(x: int, y: int):
     ks, mus, gammas = Network.Network.generate_parameters(x, y)
-    network = Network.Network("Model", ks, mus, gammas, x, y)
+    network = Network.Network(gammas, x, "Model", ks, mus)
     file_name = "/home/{0}/Stochpy/Network{1},{2}".format(getuser(), x, y)
     network_file = open(file_name, "wb")
     pickle.dump(network, network_file)
@@ -88,25 +89,43 @@ def read_files(x: int, y: int, test_type: str):
 
 
 def record_rate_data(rate_test: RateTests.RateTest, test_type: str):
+    rate_data = retrieve_data()[0]
+
     x = rate_test.x
     y = rate_test.y
-    rate_data = retrieve_data()[0]
     key = "BaseNet{0},{1}{2}Rates".format(x, y, test_type)
+
     ks = rate_test.ks
     mus = rate_test.mus
     gammas = rate_test.gammas
     tests = rate_test.tests["sim"]
-    rate_data[key] = (ks, mus, gammas, tests)
+    stored_data = (ks, mus, gammas, tests)
+
+    if key in rate_data:
+        rate_data[key].append(stored_data)
+    else:
+        rate_data[key] = [stored_data]
 
     rate_data_file = open("/home/{0}/Stochpy/SimulationData".format(getuser()), "wb")
     pickle.dump(rate_data, rate_data_file)
 
 
-def record_estimate_data(estimate: RateTests.Estimator, test_type: str, x: int, y: int):
-    size = estimate.estimate_size
+def record_estimate_data(estimate: ceRNA.Estimators.Estimator, test_type: str, x: int, y: int):
     estimate_data = retrieve_data()[1]
+
     key = "BaseNet{0},{1}{2}Estimates".format(x, y, test_type)
-    estimate_data[key] = (size, estimate.estimates, estimate.average_relative_error, estimate.average_rmse)
+
+    size = estimate.estimate_size
+    estimates = estimate.estimates
+    average_re = estimate.average_relative_error
+    average_rmse = estimate.average_rmse
+    stored_data = (size, estimates, average_re, average_rmse)
+
+    if key in estimate_data:
+        estimate_data[key].append(stored_data)
+    else:
+        estimate_data[key] = [stored_data]
+
     estimate_data_file = open("/home/{0}/Stochpy/EstimateData".format(getuser()), "wb")
     pickle.dump(estimate_data, estimate_data_file)
 

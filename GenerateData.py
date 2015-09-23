@@ -16,7 +16,7 @@ def main():
 
         # Set up network
         ks, mus, gammas = Network.Network.generate_parameters(x, y)
-        current_network = Network.Network("Model", ks, mus, gammas, x, y)
+        current_network = Network.Network(x, y, ks, mus, gammas)
         gamma_pe += current_network.gamma_test.average_relative_error["ode"]
         gamma_rmse += current_network.gamma_test.average_rmse["ode"]
         lambda_pe += current_network.lambda_test.average_relative_error["ode"]

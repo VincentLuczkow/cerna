@@ -1,5 +1,5 @@
 import numpy as np
-
+from pdb import set_trace
 
 def get_sub_matrix(rows, columns, matrix):
     x = len(columns)

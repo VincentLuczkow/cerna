@@ -30,8 +30,8 @@ def base_network_ode_solution(ks, mus, gammas):
     t = [stop_time * float(i) / (numpoints - 1) for i in range(numpoints)]
     func = get_base_derivatives_function(ks, mus, gammas)
     full_solution = scipy.integrate.odeint(func, species, t, atol=1.0e-8, rtol=1.0e-8)
-
     solution_to_return = full_solution[len(full_solution) - 1]
+
     for i in range(len(solution_to_return)):
         if solution_to_return[i] <= 1e-10:
             solution_to_return[i] = 0
@@ -50,7 +50,7 @@ def burst_network_ode_solution(ks, mus, gammas, bursts, x, y, knockouts, gamma_c
 
 def simulate(input_file: str, output_file: str, n: int):
     simulation = stochpy.SSA(File=input_file)
-    simulation.DoStochSim()
+    simulation.DoCompleteStochSim()
     means = simulation.data_stochsim.species_means
     array = np.ones(2 * n)
     array[n:] = convert_stochpy_means_to_array(means)

@@ -4,12 +4,12 @@ from pdb import set_trace
 import numpy as np
 
 from .Calculations import get_sub_matrix
-from .RateTests import CombinedTest, WildTypeTest, GammaTest, LambdaTest, KnockoutTest
+from .RateTests import WildTypeTest, GammaTest, LambdaTest, KnockoutTest
+from .Estimators import CombinedTest
 
 
 class Network:
-    def __init__(self, model_name, ks, mus, gammas, x, y):
-        self.modelName = model_name
+    def __init__(self, x, y, ks, mus, gammas):
         self.x = x
         self.y = y
         self.n = x + y
@@ -55,6 +55,40 @@ class Network:
 
         self.knockout_gamma_estimator.post_processing("ode")
 
+        self.rate_tests = {"wild": [], "gamma": [], "lambda": [], "knockout": []}
+        self.estimates = {}
+        self.wild_type_tests = []
+        self.gamma_tests = []
+        self.lambda_tests = []
+        self.knockout_tests = []
+
+    # TODO
+    def add_test(self, test_type: str):
+        if test_type == "wild":
+            new_test = WildTypeTest(self.x, self.y, self.ks, self.mus, self.gammas)
+        elif test_type == "gamma":
+            new_test = GammaTest(self.x, self.y, self.ks, self.mus, self.gammas)
+        elif test_type == "lambda":
+            new_test = LambdaTest(self.x, self.y, self.ks, self.mus, self.gammas)
+        elif test_type == "knockout":
+            new_test = KnockoutTest(self.x, self.y, self.ks, self.mus, self.gammas)
+        self.rate_tests[test_type].append(new_test)
+
+    # TODO
+    def add_estimator(self, real_vector: np.ndarray, number_of_tests: int, included_tests: list, estimate_name: str):
+        size_of_tests = len(real_vector)
+        matrix = np.empty([number_of_tests, size_of_tests])
+        current_index = 0
+        for test in included_tests:
+            test_type, test_index, simulation_type, start_row, end_row = test
+            next_index = current_index + (end_row - start_row)
+            rate_test = self.rate_tests[test_type][test_index]
+            rate_test_rows = rate_test.prepare_rows_for_matrix()
+            matrix[current_index:next_index] = rate_test_rows
+            current_index = next_index + 1
+        self.estimates[estimate_name] = 5
+        return 0
+
     def setup(self):
         self.wild_type_test.setup()
         self.gamma_test.setup()
@@ -85,13 +119,13 @@ class Network:
         mus = np.zeros(x + y)
 
         for i in range(x):
-            ks[i] = random.uniform(10, 50)
+            ks[i] = np.random.normal(10, 0.5)
             # ks[i] = 6
             mus[i] = np.random.normal(10, 0.5)
             # mus[i] = 5
             gammas[i] = {}
             for j in range(x, n):
-                value = np.random.normal(1.25, 0.01)
+                value = np.random.normal(1.25, 0.1)
                 # value = 2.6
                 gammas[i][j] = value
                 if j not in gammas:
@@ -99,7 +133,7 @@ class Network:
                 gammas[j][i] = value
 
         for i in range(x, n):
-            ks[i] = random.uniform(10, 50)
+            ks[i] = np.random.normal(10, 0.5)
             # ks[i] = 5
             mus[i] = np.random.normal(10, 0.5)
         # mus[i] = 5
@@ -142,3 +176,26 @@ class Network:
                         shadowed.append(neighbor)
         added.sort()
         return added == list(range(x + y))
+
+
+class BurstNetwork(Network):
+    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
+                 alphas: np.ndarray, betas: np.ndarray):
+        self.alphas = alphas
+        self.betas = betas
+        Network.__init__(self, x, y, ks, mus, gammas)
+
+    def add_test(self, test_type: str):
+        pass
+
+    def add_estimator(self, real_vector: np.ndarray, number_of_tests: int, included_tests: list, estimate_name: str):
+        return super().add_estimator(real_vector, number_of_tests, included_tests, estimate_name)
+
+
+class ComplexNetwork(BurstNetwork):
+    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
+                 alphas: np.ndarray, betas: np.ndarray):
+        self.alphas = alphas
+        self.betas = betas
+        BurstNetwork.__init__(self, x, y, ks, mus, gammas)
+
