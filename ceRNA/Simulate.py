@@ -15,14 +15,14 @@ def base_network_ode_solution(ks, mus, gammas):
 
     def get_base_derivatives_function(ks: np.ndarray, mus: np.ndarray, gammas: dict):
 
-        def function(species_means, sim_time):
+        def get_base_derivatives(species_means, sim_time):
             derivatives = np.zeros(n)
             np.add(derivatives, ks, derivatives)
             np.subtract(derivatives, np.multiply(mus, species_means), derivatives)
             np.subtract(derivatives, np.multiply(np.dot(new_gammas, species_means), species_means), derivatives)
             return derivatives
 
-        return function
+        return get_base_derivatives
 
     species = [10] * len(ks)
     stop_time = 100

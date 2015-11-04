@@ -10,7 +10,7 @@ import numpy as np
 
 from .Simulate import base_network_ode_solution, simulate
 from .NetworkFiles import create_base_network_file
-from .Estimators import Estimator
+from .Estimators import Esti
 
 
 class RateTest:
@@ -18,16 +18,13 @@ class RateTest:
     path_to_stochpy_folder = "/home/" + getuser() + "/Stochpy/"
 
     def __init__(self, x: int, y: int,
-                 ks: np.ndarray,
-                 mus: np.ndarray,
-                 gammas: dict,
-                 model_type: int,
-                 alphas: np.ndarray=None,
-                 betas: np.ndarray=None):
+                 ks: np.ndarray, mus: np.ndarray, gammas: dict,
+                 deterministic_solver=None, file_writer=None):
         # Number of mRNAs
         self.x = x
         # Number of miRNAs
         self.y = y
+        # Total number of RNAs in the network
         self.n = x + y
         # Creation rates
         self.ks = ks
@@ -35,10 +32,10 @@ class RateTest:
         self.mus = mus
         # Interaction Rates
         self.gammas = gammas
-        # Burst On Rate
-        self.alphas = alphas
-        # Burst Off Rate
-        self.betas = betas
+        # Function for running deterministic tests
+        self.deterministic_solver = deterministic_solver
+        # Function for creating simulation files
+        self.file_writer = file_writer
         self.number_of_tests = 0
         self.number_of_changes = 0
         self.tests = {}
@@ -51,6 +48,9 @@ class RateTest:
     def setup(self):
         self.tests["ode"] = self.mean_field_solutions()
         self.psc_file_names, self.result_file_names = self.create_psc_files()
+
+    def run_deterministic_test(self):
+        pass
 
     def generate_changes(self, change_type: int=0):
         return None, None
@@ -138,16 +138,12 @@ class RateTest:
 
 class WildTypeTest(RateTest):
 
-    test_type = "W"
+    test_type = "wild"
 
-    def __init__(self,
-                 x: int,
-                 y: int,
-                 ks: np.ndarray,
-                 mus: np.ndarray,
-                 gammas: dict,
-                 model_type: int):
-        RateTest.__init__(self, x, y, ks, mus, gammas, model_type)
+    def __init__(self, x: int, y: int,
+                 ks: np.ndarray, mus: np.ndarray, gammas: dict,
+                 deterministic_solver=None, file_writer=None):
+        RateTest.__init__(self, x, y, ks, mus, gammas, deterministic_solver, file_writer)
         self.change_sets = self.generate_changes()
         self.number_of_tests = 1
         self.number_of_changes = 1
@@ -159,22 +155,18 @@ class WildTypeTest(RateTest):
         return self.tests[run_type]
 
 
-class GammaTest(RateTest, Estimator):
+class GammaTest(RateTest, Esti):
 
-    test_type = "G"
+    test_type = "gamma"
 
-    def __init__(self,
-                 x: int,
-                 y: int,
-                 real_vector: np.ndarray,
-                 ks: np.ndarray,
-                 mus: np.ndarray,
-                 gammas: np.ndarray,
-                 model_type: int):
-        RateTest.__init__(self, x, y, ks, mus, gammas, model_type)
+    def __init__(self, x: int, y: int,
+                 ks: np.ndarray, mus: np.ndarray, gammas: dict, real_vector,
+                 deterministic_solver=None, file_writer=None):
+
+        RateTest.__init__(self, x, y, ks, mus, gammas, deterministic_solver, file_writer)
         self.number_of_tests = 2 * self.n
         self.number_of_changes = self.n
-        Estimator.__init__(self, real_vector)
+        Esti.__init__(self, real_vector)
         self.change_sets = self.generate_changes(1)
 
     def generate_changes(self, change_type: int=0):
@@ -229,7 +221,7 @@ class GammaTest(RateTest, Estimator):
 
     def post_processing(self, run_type: str):
         self.matrices[run_type] = self.compute_matrix(self.tests[run_type])
-        Estimator.post_processing(self, run_type)
+        Esti.post_processing(self, run_type)
 
     def compute_matrix(self, tests) -> np.ndarray:
         matrix = np.empty([self.number_of_tests, self.estimate_size])
@@ -238,39 +230,35 @@ class GammaTest(RateTest, Estimator):
         matrix[-1] = tests[-1][self.n:] - tests[0][self.n:]
         return matrix
 
-    # TODO
     def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
         tests = self.tests[run_type]
+        number_of_rows = end_index - start_index
+        matrix = np.empty([number_of_rows, 2 * self.n])
+        for row in range(start_index, end_index):
+            matrix[row - start_index] = tests[(row + 1) % number_of_rows] - tests[row]
+        return matrix
 
 
-class LambdaTest(RateTest, Estimator):
+class LambdaTest(RateTest):
 
-    test_type = "L"
+    test_type = "lambda"
 
-    def __init__(self,
-                 x: int,
-                 y: int,
-                 real_vector: np.ndarray,
-                 ks: np.ndarray,
-                 mus: np.ndarray,
-                 gammas: np.ndarray,
-                 model_type: int,
-                 knockout=-1,
-                 creation_rate_changes=None):
+    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray, real_vector,
+                 deterministic_solver=None, file_writer=None,
+                 knockout=-1, creation_rate_changes=None):
         if knockout is -1:
             self.knockout = random.randrange(x + y)
         else:
             self.knockout = knockout
         if not creation_rate_changes:
-            self.creation_rate_changes = self.select_creation_rate_changes(x+y, self.knockout, 5, 1, x+y-1)
+            self.creation_rate_changes = self.select_creation_rate_changes(x+y, self.knockout, 15, 1, x+y-1)
         else:
             self.creation_rate_changes = creation_rate_changes
 
-        RateTest.__init__(self, x, y, ks, mus, gammas)
+        RateTest.__init__(self, x, y, ks, mus, gammas, deterministic_solver, file_writer)
         self.number_of_tests = 4 * self.n
         self.number_of_changes = self.n
         self.number_of_rows = int(self.number_of_tests / 2)
-        Estimator.__init__(self, real_vector)
         self.wild_tests = {}
         self.knockout_tests = {}
         self.change_sets = self.generate_changes()
@@ -304,8 +292,7 @@ class LambdaTest(RateTest, Estimator):
         return change_sets
 
     def post_processing(self, run_type: str):
-        self.matrices[run_type] = self.compute_matrix(self.tests[run_type])
-        Estimator.post_processing(self, run_type)
+        pass
 
     def compute_matrix(self, tests: np.ndarray):
         # For lambda tests, two tests are required to produce a single row of the matrix.
@@ -322,6 +309,24 @@ class LambdaTest(RateTest, Estimator):
         matrix[-1] = diff_matrix[-1][self.estimate_size:] - diff_matrix[0][self.estimate_size:]
         return matrix
 
+    # TODO: Testing
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+        tests = self.tests[run_type]
+        number_of_rows = end_index - start_index
+
+        diff_matrix = np.empty([self.number_of_rows, 2 * self.n])
+        # Compute the differences between wild type tests and corresponding knockout tests.+
+        for row in range(self.number_of_rows):
+            # Wild type tests are in even rows, knockout tests are in odd rows.
+            tests[row * 2 + 1][self.knockout] = 0
+            diff_matrix[row] = tests[row * 2] - tests[row * 2 + 1]
+
+        matrix = np.empty([number_of_rows, 2 * self.n])
+        for row in range(start_index, end_index):
+            matrix[row - start_index] = diff_matrix[(row + 1) % number_of_rows] - diff_matrix[row]
+        set_trace()
+        return matrix
+
     @staticmethod
     def select_creation_rate_changes(n: int, knockout: int, number_of_changes: int, lower_bound: int,
                                      upper_bound: int) -> dict:
@@ -335,17 +340,17 @@ class LambdaTest(RateTest, Estimator):
             changes[i] = new_change
         return changes
 
-    # TODO
-    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
-        super().prepare_rows_for_matrix(run_type, start_index, end_index)
+
 
 
 class KnockoutTest(RateTest):
 
-    test_type = "K"
+    test_type = "knockout"
 
-    def __init__(self, x, y, ks, mus, gammas):
-        RateTest.__init__(self, x, y, ks, mus, gammas)
+    def __init__(self, x: int, y: int,
+                 ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
+                 deterministic_solver=None, file_writer=None):
+        RateTest.__init__(self, x, y, ks, mus, gammas, deterministic_solver, file_writer)
         self.number_of_tests = self.n
         self.number_of_changes = self.n
         self.change_sets = self.generate_changes()
@@ -358,7 +363,7 @@ class KnockoutTest(RateTest):
             change_set.append((new_ks, None))
         return change_set
 
-    # TODO
+    # TODO: Implement
     def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
         super().prepare_rows_for_matrix(run_type, start_index, end_index)
 

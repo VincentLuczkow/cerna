@@ -5,11 +5,19 @@ import numpy as np
 
 from .Calculations import get_sub_matrix
 from .RateTests import WildTypeTest, GammaTest, LambdaTest, KnockoutTest
-from .Estimators import CombinedTest
-
+from .Estimators import *
+from .Simulate import base_network_ode_solution, burst_network_ode_solution
 
 class Network:
-    def __init__(self, x, y, ks, mus, gammas):
+
+    test_types = {
+        "wild": WildTypeTest,
+        "gamma": GammaTest,
+        "lambda": LambdaTest,
+        "knockout": KnockoutTest
+    }
+
+    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: dict):
         self.x = x
         self.y = y
         self.n = x + y
@@ -27,90 +35,109 @@ class Network:
         self.wild_type_test = WildTypeTest(x, y, ks, mus, gammas)
         self.wild_type_test.setup()
 
-        self.gamma_test = GammaTest(x, y, self.real_vector[n:], ks, mus, gammas)
-        self.gamma_test.setup()
-        self.gamma_test.post_processing("ode")
-
-        self.lambda_test = LambdaTest(x, y, self.real_vector[n:], ks, mus, gammas)
-        self.lambda_test.setup()
-        self.lambda_test.post_processing("ode")
-
         self.knockout_test = KnockoutTest(x, y, ks, mus, gammas)
         self.knockout_test.setup()
 
-        self.tests = [self.wild_type_test, self.gamma_test, self.lambda_test, self.knockout_test]
+        #self.tests = [self.wild_type_test, self.gamma_test, self.lambda_test, self.knockout_test]
 
-        usable_knockout_tests = self.select_usable_knockouts("ode")
-
-        self.knockout_lambda_estimator = CombinedTest(self.real_vector)
-        self.knockout_lambda_estimator.set_matrix(self.wild_type_test.tests["ode"],
-                                             usable_knockout_tests,
-                                             self.lambda_test.tests["ode"], "ode")
-        self.knockout_lambda_estimator.post_processing("ode")
-
-        self.knockout_gamma_estimator = CombinedTest(self.real_vector)
-        self.knockout_gamma_estimator.set_matrix(self.wild_type_test.tests["ode"],
-                                            self.knockout_test.tests["ode"],
-                                            self.gamma_test.tests["ode"], "ode")
-
-        self.knockout_gamma_estimator.post_processing("ode")
+        #usable_knockout_tests = self.select_usable_knockouts("ode")
 
         self.rate_tests = {"wild": [], "gamma": [], "lambda": [], "knockout": []}
-        self.estimates = {}
-        self.wild_type_tests = []
-        self.gamma_tests = []
-        self.lambda_tests = []
-        self.knockout_tests = []
 
-    # TODO
+        self.deterministic_solver = self.get_deterministic_solver()
+
+        self.estimates = {}
+
+        # TODO : Move imports around, point this to base_network_file_writer.
+        self.file_writer = self.get_file_writer()
+
+    def get_deterministic_solver(self):
+        return base_network_ode_solution
+
+    # TODO: return the actual file writer
+    def get_file_writer(self):
+        return 0
+
+    # TODO: Testing
     def add_test(self, test_type: str):
-        if test_type == "wild":
-            new_test = WildTypeTest(self.x, self.y, self.ks, self.mus, self.gammas)
-        elif test_type == "gamma":
-            new_test = GammaTest(self.x, self.y, self.ks, self.mus, self.gammas)
-        elif test_type == "lambda":
-            new_test = LambdaTest(self.x, self.y, self.ks, self.mus, self.gammas)
-        elif test_type == "knockout":
-            new_test = KnockoutTest(self.x, self.y, self.ks, self.mus, self.gammas)
+        new_test = self.test_types[test_type](self.x, self.y, self.ks, self.mus, self.gammas, self.real_vector[self.n:],
+                                              self.deterministic_solver)
+        new_test.setup()
         self.rate_tests[test_type].append(new_test)
 
-    # TODO
+    # TODO: Testing
     def add_estimator(self, real_vector: np.ndarray, number_of_tests: int, included_tests: list, estimate_name: str):
         size_of_tests = len(real_vector)
-        matrix = np.empty([number_of_tests, size_of_tests])
+        matrix = np.empty([number_of_tests, 2 * self.n])
         current_index = 0
         for test in included_tests:
             test_type, test_index, simulation_type, start_row, end_row = test
             next_index = current_index + (end_row - start_row)
             rate_test = self.rate_tests[test_type][test_index]
-            rate_test_rows = rate_test.prepare_rows_for_matrix()
+            rate_test_rows = rate_test.prepare_rows_for_matrix(simulation_type, start_row, end_row)
             matrix[current_index:next_index] = rate_test_rows
             current_index = next_index + 1
-        self.estimates[estimate_name] = 5
+        set_trace()
         return 0
+
+    # TODO: Testing
+    def add_decay_estimator(self, test_type: str, test_index: int, simulation_type:str):
+        real_vector = self.real_vector[self.n:]
+        number_of_tests = 2 * self.n
+        decay_test = (test_type, test_index, simulation_type, 0, number_of_tests)
+        included_tests = [decay_test]
+        estimate_name = "{0} estimator for {1} test: {2}".format(test_type, simulation_type, test_index)
+        decay_tests = self.combine_tests(number_of_tests, included_tests)
+        decay_estimator = DecayEstimator(real_vector, decay_tests)
+        decay_estimator.calculate_accuracy()
+        self.estimates[(test_type, simulation_type, test_index)] = decay_estimator
+
+    def combine_tests(self, number_of_tests: int, included_tests: list):
+        combined_tests = np.empty([number_of_tests, 2 * self.n])
+        current_index = 0
+        for test in included_tests:
+            test_type, test_index, simulation_type, start_row, end_row = test
+            next_index = current_index + (end_row - start_row)
+            rate_test = self.rate_tests[test_type][test_index]
+            rate_test_rows = rate_test.prepare_rows_for_matrix(simulation_type, start_row, end_row)
+            combined_tests[current_index:next_index] = rate_test_rows
+
+            current_index = next_index + 1
+        return combined_tests
 
     def setup(self):
         self.wild_type_test.setup()
-        self.gamma_test.setup()
-        self.lambda_test.setup()
         self.knockout_test.setup()
 
     def post_processing(self):
-        self.gamma_test.post_processing("ode")
-        self.lambda_test.post_processing("ode")
-        self.knockout_gamma_estimator.post_processing("ode")
-        self.knockout_lambda_estimator.post_processing("ode")
+        pass
 
-    def select_usable_knockouts(self, run_type) -> np.ndarray:
+    def select_usable_knockouts(self, knockout_test_index: int, lambda_test_index: int, run_type: str) -> np.ndarray:
         column_map = range(2 * self.n)
-        tests = self.knockout_test.tests[run_type]
-        if self.lambda_test.knockout != self.n - 1:
+        knockout_tests = self.rate_tests["knockout"][knockout_test_index].tests[run_type]
+        lambda_test = self.rate_tests["lambda"][lambda_test_index]
+        if lambda_test.knockout != self.n - 1:
             row_map = range(self.n - 1)
         else:
             row_map = dict(zip(list(range(1, self.n)), list(range(self.n - 1))))
-        usable_knockout_tests = get_sub_matrix(row_map, column_map, tests)
+        usable_knockout_tests = get_sub_matrix(row_map, column_map, knockout_tests)
         return usable_knockout_tests
 
+
+    # TODO: Add function generate_gamma_parameters
+    # TODO: Testing
+    @staticmethod
+    def generate_simple_parameters(x: int, y: int,
+                                     m_mean: float=10, m_var: float=0.5, s_mean: float=10, s_var: float=0.5) -> np.ndarray:
+        ks = np.zeros(x + y)
+        for mRNA in range(x):
+            ks[mRNA] = np.random.normal(m_mean, m_var)
+        for miRNA in range(x, x + y):
+            ks[miRNA] = np.random.normal(s_mean, s_var)
+
+        return ks
+
+    # Generates
     @staticmethod
     def generate_parameters(x, y):
         n = x + y
@@ -126,6 +153,42 @@ class Network:
             gammas[i] = {}
             for j in range(x, n):
                 value = np.random.normal(1.25, 0.1)
+                # value = 2.6
+                gammas[i][j] = value
+                if j not in gammas:
+                    gammas[j] = {}
+                gammas[j][i] = value
+
+        for i in range(x, n):
+            ks[i] = np.random.normal(10, 0.5)
+            # ks[i] = 5
+            mus[i] = np.random.normal(10, 0.5)
+        # mus[i] = 5
+
+        #  Remove some gamma values
+        legal = False
+        while not legal:
+            new_gammas = Network.cull_gammas(x, y, deepcopy(gammas))
+            legal = Network.check_network_legality(x, y, new_gammas)
+
+        return ks, mus, gammas
+
+    # Generates gamma parameters for models with very large gamma values.
+    @staticmethod
+    def generate_large_gamma_parameters(x, y):
+        n = x + y
+        gammas = {}
+        ks = np.zeros(x + y)
+        mus = np.zeros(x + y)
+
+        for i in range(x):
+            ks[i] = np.random.normal(10, 0.5)
+            # ks[i] = 6
+            mus[i] = np.random.normal(10, 0.5)
+            # mus[i] = 5
+            gammas[i] = {}
+            for j in range(x, n):
+                value = np.random.normal(125, 10)
                 # value = 2.6
                 gammas[i][j] = value
                 if j not in gammas:
@@ -179,6 +242,7 @@ class Network:
 
 
 class BurstNetwork(Network):
+
     def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
                  alphas: np.ndarray, betas: np.ndarray):
         self.alphas = alphas
@@ -191,6 +255,10 @@ class BurstNetwork(Network):
     def add_estimator(self, real_vector: np.ndarray, number_of_tests: int, included_tests: list, estimate_name: str):
         return super().add_estimator(real_vector, number_of_tests, included_tests, estimate_name)
 
+    @staticmethod
+    def generate_burst_parameters(x, y) -> tuple:
+        pass
+
 
 class ComplexNetwork(BurstNetwork):
     def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
@@ -199,3 +267,9 @@ class ComplexNetwork(BurstNetwork):
         self.betas = betas
         BurstNetwork.__init__(self, x, y, ks, mus, gammas)
 
+    def add_test(self, test_type: str):
+        pass
+
+    @staticmethod
+    def generate_complex_parameters(x, y) -> tuple:
+        pass

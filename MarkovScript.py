@@ -79,7 +79,7 @@ def read_files(x: int, y: int, test_type: str):
         wild_type = network.wild_type_test.tests["sim"]
         test.set_matrix(wild_type, knockout, decay, "sim")
 
-    test.post_processing("sim")
+    test.calculate_accuracy("sim")
     test.print_results("sim")
 
     pickle.dump(network, open(network_file_name, "wb"))
@@ -110,7 +110,7 @@ def record_rate_data(rate_test: RateTests.RateTest, test_type: str):
     pickle.dump(rate_data, rate_data_file)
 
 
-def record_estimate_data(estimate: ceRNA.Estimators.Estimator, test_type: str, x: int, y: int):
+def record_estimate_data(estimate: ceRNA.Estimators.Esti, test_type: str, x: int, y: int):
     estimate_data = retrieve_data()[1]
 
     key = "BaseNet{0},{1}{2}Estimates".format(x, y, test_type)
