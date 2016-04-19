@@ -1,5 +1,7 @@
 import getpass
 from getpass import getuser
+from typing import Callable, Tuple
+import pdb
 import random
 from copy import deepcopy
 import re
@@ -12,14 +14,14 @@ def base_creation_and_decay_reactions(ks, mus):
     string = "#Reactions\n"
     reaction_count = 0
     for RNA in range(len(ks)):
-        string += "R" + str(reaction_count) + ":\n"
-        string += "\t$pool > r" + str(RNA) + "\n"
-        string += "\tk" + str(RNA) + "\n\n"
+        string += "R{}:\n".format(reaction_count)
+        string += "    $pool > r{}\n".format(RNA)
+        string += "    k{}\n\n".format(RNA)
         reaction_count += 1
     for RNA in range(len(mus)):
-        string += "R" + str(reaction_count) + ":\n"
-        string += "\tr" + str(RNA) + " > $pool\n"
-        string += "\tmu" + str(RNA) + "*r" + str(RNA) + "\n\n"
+        string += "R{}:\n".format(reaction_count)
+        string += "    r{} > $pool\n".format(RNA)
+        string += "    mu{} * r{}\n\n".format(RNA, RNA)
         reaction_count += 1
     return string
 
@@ -97,8 +99,8 @@ def get_burst_species_amounts(ks):
     species_string = ""
     for RNA in range(len(ks)):
         # All species start in off state.
-        species_string += "\tOFF" + str(RNA) + " = 1\n"
-        species_string += "\tON" + str(RNA) + " = 0\n"
+        species_string += "    OFF{} = 1\n".format(RNA)
+        species_string += "    ON{} = 0\n".format(RNA)
     species_string += "\n"
     return species_string
 
@@ -107,14 +109,12 @@ def get_burst_species_amounts(ks):
 # in the network.
 # ks is an array giving the creation parameters.
 # mus is an array giving the decay parameters.
-def base_creation_and_decay_parameters(ks, mus):
+def base_arrival_and_decay_parameters(ks: np.ndarray, mus: np.ndarray) -> str:
     parameter_string = "#Parameters\n"
     # For every RNA in the network
     for RNA in range(len(ks)):
-        # Add its creation parameter
-        parameter_string += "\tk" + str(RNA) + " = " + str(ks[RNA]) + "\n"
-        # Add its decay parameter
-        parameter_string += "\tmu" + str(RNA) + " = " + str(mus[RNA]) + "\n"
+        parameter_string += "    k{} = {}\n".format(RNA, ks[RNA])
+        parameter_string += "    mu{} = {}\n".format(RNA, mus[RNA])
     return parameter_string
 
 
@@ -159,6 +159,8 @@ def create_base_network_file(x: int, y: int,
     out_string = "#Random base network of size " + str(x) + ", " + str(y) + ".\n"
 
     # Remove any knockouts
+    if not gammas:
+        pdb.set_trace()
     new_x, new_ks, new_mus, new_gammas = remove_knockouts(x, ks, mus, gammas)
     n = len(new_ks)
 
@@ -170,7 +172,7 @@ def create_base_network_file(x: int, y: int,
     out_string += get_base_species_amount(new_ks)
 
     # Parameter Strings
-    out_string += base_creation_and_decay_parameters(new_ks, new_mus)
+    out_string += base_arrival_and_decay_parameters(new_ks, new_mus)
     out_string += gamma_parameters(new_x, new_gammas)
 
     network_file = open("/home/" + getpass.getuser() + "/Stochpy/pscmodels/" + file_name + ".psc", "w")
@@ -178,13 +180,14 @@ def create_base_network_file(x: int, y: int,
     network_file.close()
 
 
-def get_base_network_writer():
-    def file_writer(x: int, y: int,
-                    ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
+def get_base_network_writer(x: int, y: int):
+    def file_writer(ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
                     file_name: str):
         out_string = "#Random base network of size " + str(x) + ", " + str(y) + ".\n"
 
         # Remove any knockouts
+        if not gammas:
+            pdb.set_trace()
         new_x, new_ks, new_mus, new_gammas = remove_knockouts(x, ks, mus, gammas)
         n = len(new_ks)
 
@@ -196,7 +199,7 @@ def get_base_network_writer():
         out_string += get_base_species_amount(new_ks)
 
         # Parameter Strings
-        out_string += base_creation_and_decay_parameters(new_ks, new_mus)
+        out_string += base_arrival_and_decay_parameters(new_ks, new_mus)
         out_string += gamma_parameters(new_x, new_gammas)
 
         network_file = open("/home/" + getpass.getuser() + "/Stochpy/pscmodels/" + file_name + ".psc", "w")
@@ -205,10 +208,11 @@ def get_base_network_writer():
 
     return file_writer
 
-def get_burst_network_writer(x: int, y: int,
-                              alphas: np.ndarray, betas: np.ndarray):
 
-    def file_writer(ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray, file_name: str):
+def get_burst_network_writer(x: int, y: int,
+                             alphas: np.ndarray, betas: np.ndarray) -> Callable[..., type(None)]:
+
+    def file_writer(ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray, file_name: str) -> type(None):
         n = x + y
         out_string = "#Random burst network of size " + str(x) + ", " + str(y) + ".\n"
 
@@ -221,7 +225,7 @@ def get_burst_network_writer(x: int, y: int,
         out_string += get_burst_species_amounts(ks)
 
         # Parameter Strings
-        out_string += base_creation_and_decay_parameters(ks, mus)
+        out_string += base_arrival_and_decay_parameters(ks, mus)
         out_string += gamma_parameters(x, gammas)
         out_string += burst_creation_and_decay_parameters(alphas, betas)
 
@@ -233,36 +237,40 @@ def get_burst_network_writer(x: int, y: int,
 
 
 def get_complex_network_writer(x: int, y: int,
-                                ks: np.ndarray, mus: np.ndarray, gammas: dict,
-                                alphas: np.ndarray, betas: np.ndarray, deltas: dict,
-                                file_name: str):
-    n = x + y
-    out_string = "#Random complete burst network of size " + str(x) + ", " + str(y) + ".\n"
+                               alphas: np.ndarray, betas: np.ndarray, deltas: np.ndarray) -> Callable[..., type(None)]:
 
-    # Reaction Strings
-    out_string += burst_creation_and_decay_reactions(n)
-    out_string += get_gamma_reactions_string(x, gammas, 4 * (x + y))
+    def file_writer(ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray, file_name: str) -> type(None):
+        n = x + y
+        out_string = "#Random complete burst network of size " + str(x) + ", " + str(y) + ".\n"
 
-    # Species Strings
-    out_string += get_base_species_amount(ks)
-    out_string += get_burst_species_amounts(ks)
+        # Reaction Strings
+        out_string += burst_creation_and_decay_reactions(n)
+        out_string += get_gamma_reactions_string(x, gammas, 4 * (x + y))
 
-    # Parameter Strings
-    out_string += base_creation_and_decay_parameters(ks, mus)
-    out_string += gamma_parameters(x, gammas)
-    out_string += burst_creation_and_decay_parameters(ks)
+        # Species Strings
+        out_string += get_base_species_amount(ks)
+        out_string += get_burst_species_amounts(ks)
 
-    network_file = open(file_name, "w")
-    network_file.write(out_string)
-    network_file.close()
+        # Parameter Strings
+        out_string += base_arrival_and_decay_parameters(ks, mus)
+        out_string += gamma_parameters(x, gammas)
+        out_string += burst_creation_and_decay_parameters(ks, betas)
+
+        network_file = open(file_name, "w")
+        network_file.write(out_string)
+        network_file.close()
+
+    return file_writer
 
 
 # Knockout species (k_i = 0) must be genuinely removed, or the simulations
 # won't run as well.
 def remove_knockouts(x: int, ks: np.ndarray, mus: np.ndarray, gammas: dict,
-                     alphas: np.ndarray = None, betas: np.ndarray = None, deltas: dict = None) -> tuple:
-    n = len(ks)
+                     alphas: np.ndarray = None, betas: np.ndarray = None, deltas: dict = None) \
+                     -> tuple:
     new_x = 0
+    if gammas == None:
+        pdb.set_trace()
     new_ks = []
     new_mus = []
     new_gammas = {}

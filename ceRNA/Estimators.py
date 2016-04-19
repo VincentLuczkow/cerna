@@ -18,7 +18,17 @@ class Estimator:
         self.average_relative_error = 0
 
     def create_matrix(self) -> np.ndarray:
-        pass
+        return self.tests
+
+    def calculate_accuracy(self):
+        self.estimate = estimate_parameters(self.matrix)[-len(self.real_vector):]
+
+        # Accuracy calculations
+        self.rmses = rmse_vector(self.real_vector, self.estimate)
+        self.average_rmse = self.rmses.mean()
+        self.relative_errors = percent_error_vector(self.real_vector, self.estimate)
+        self.average_relative_error = self.relative_errors.mean()
+        self.print_results()
 
     def print_results(self):
         print("Results:")
@@ -27,25 +37,14 @@ class Estimator:
         print("    PE Vector: {0}".format(self.relative_errors))
         print("    Average PE: {0}".format(self.average_relative_error))
 
-    def calculate_accuracy(self):
-        self.estimate = estimate_parameters(self.matrix)
-
-        # Accuracy calculations
-        self.rmses = rmse_vector(self.real_vector, self.estimate)
-        self.average_rmse = self.rmses.mean()
-        self.relative_errors = percent_error_vector(self.real_vector, self.estimate)
-        self.average_relative_error = self.relative_errors.mean()
-
 
 class DecayEstimator(Estimator):
     def __init__(self, real_vector: np.ndarray, tests: np.ndarray):
         Estimator.__init__(self, real_vector, tests)
 
+    # Returns the right half of tests.
     def create_matrix(self) -> np.ndarray:
-        matrix = np.empty([self.number_of_tests, self.estimate_size])
-        for row in range(self.number_of_tests):
-            next_row = (row + 1) % self.number_of_tests
-            matrix[row] = self.tests[next_row][self.estimate_size:] - self.tests[row][self.estimate_size:]
+        matrix = self.tests[:, -self.estimate_size:]
         return matrix
 
 

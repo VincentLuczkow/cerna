@@ -1,16 +1,18 @@
-from copy import deepcopy
+from copy import deepcopy, copy
 from getpass import getuser
 from itertools import combinations
 from multiprocessing import Process
 import pickle
 import random
 from pdb import set_trace
+from typing import List, Tuple
 
 import numpy as np
 
 from .Simulate import base_network_ode_solution, simulate
 from .NetworkFiles import create_base_network_file
 from .Estimators import Esti
+from .Definitions import *
 
 
 class RateTest:
@@ -26,15 +28,15 @@ class RateTest:
         self.y = y
         # Total number of RNAs in the network
         self.n = x + y
-        # Creation rates
+        # Birth rates
         self.ks = ks
-        # Decay Rates
+        # Death rates
         self.mus = mus
-        # Interaction Rates
+        # Interaction rates
         self.gammas = gammas
-        # Function for running deterministic tests
+        # Function for running deterministic tests.
         self.deterministic_solver = deterministic_solver
-        # Function for creating simulation files
+        # Function for creating simulation files.
         self.file_writer = file_writer
         self.number_of_tests = 0
         self.number_of_changes = 0
@@ -49,40 +51,40 @@ class RateTest:
         self.tests["ode"] = self.mean_field_solutions()
         self.psc_file_names, self.result_file_names = self.create_psc_files()
 
-    def run_deterministic_test(self):
+    def mean_field_approximation(self):
         pass
 
     def generate_changes(self, change_type: int=0):
         return None, None
 
     def create_psc_files(self) -> tuple:
-        psc_files = []
-        results_files = []
+        psc_file_names = []  # type: List[str]
+        results_file_names = []  # type: List[str]
         base_file_name = "BaseNet{0},{1}{2}Test".format(self.x, self.y, self.test_type)
 
         for change in range(self.number_of_changes):
             change_file_name = base_file_name + str(change)
-            new_ks, new_gammas = self.change_sets[change]
-            if new_ks is None:
-                new_ks = self.ks
-            if new_gammas is None:
-                new_gammas = self.gammas
+            changed_ks, changed_gammas = self.change_sets[change]
+            if changed_ks is None:
+                changed_ks = self.ks
+            if changed_gammas is None:
+                changed_gammas = self.gammas
 
-            create_base_network_file(self.x, self.y, new_ks, self.mus, new_gammas, change_file_name)
-            psc_files.append(change_file_name)
+            create_base_network_file(self.x, self.y, changed_ks, self.mus, changed_gammas, change_file_name)
+            psc_file_names.append(change_file_name)
 
         for test in range(self.number_of_tests):
             results_file_name = RateTest.path_to_stochpy_folder + base_file_name + str(test) + "Results"
-            results_files.append(results_file_name)
+            results_file_names.append(results_file_name)
 
-        return psc_files, results_files
+        return psc_file_names, results_file_names
 
-    def compute_matrix(self, matrix) -> np.ndarray:
-        return np.empty([self.n, self.n])
+    # Returns a submatrix suitable for use by an Estimator.
+    # The submatrix is row start_index to row end_index-1
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int) -> np.ndarray:
+        return self.tests[run_type][start_index: end_index]
 
-    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
-        pass
-
+    # Calculates how closely this RateTest matches the prediction from the mean field approximation.
     def calculate_row_accuracies(self, run_type: str):
         row_size = len(self.tests[run_type][0])
         self.row_accuracies[run_type] = np.empty(row_size)
@@ -91,6 +93,7 @@ class RateTest:
             self.row_accuracies[run_type][row] = accuracy
         self.average_row_accuracy[run_type] = self.row_accuracies[run_type].mean()
 
+    # Retrieves
     def collate_sim_data(self):
         tests = np.ones([self.number_of_tests, 2 * self.n])
         for test in range(self.number_of_tests):
@@ -148,7 +151,7 @@ class WildTypeTest(RateTest):
         self.number_of_tests = 1
         self.number_of_changes = 1
 
-    def generate_changes(self, change_type: int=0):
+    def generate_changes(self, change_type: int=0) -> List[Tuple]:
         return [(None, None)]
 
     def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
@@ -169,6 +172,87 @@ class GammaTest(RateTest, Esti):
         Esti.__init__(self, real_vector)
         self.change_sets = self.generate_changes(1)
 
+    def generate_changes(self, change_type: int=0) -> List[Tuple[np.ndarray, np.ndarray]]:
+        change_set = []
+        if change_type == GammaChange.MRNA_METHOD:
+            change_generator = self.generate_changes_mrna_method
+        elif change_type == GammaChange.GAMMA_SCALING_METHOD:
+            change_generator = self.generate_changes_gamma_scaling_method
+        elif change_type == GammaChange.GAMMA_REMOVAL_METHOD:
+            change_generator = self.generate_changes_gamma_removal_method
+        else:
+            change_generator = self.generate_changes_gamma_removal_method
+
+        for change in range(self.number_of_changes):
+            new_gammas = change_generator(change)
+            change_set.append((None, new_gammas))
+        return change_set
+
+    def generate_changes_mrna_method(self, test: int) -> np.ndarray:
+        mRNA = test % self.x
+        gamma_changes = []
+        for miRNA in self.gammas[mRNA]:
+            multiplier = np.random.uniform(0.5, 2.0)
+            new_value = self.gammas[mRNA][miRNA] * multiplier
+            gamma_changes.append((mRNA, miRNA, new_value))
+        new_gammas = generate_modified_gammas(deepcopy(self.gammas), gamma_changes)
+        return new_gammas
+
+    def generate_changes_gamma_scaling_method(self, test: int) -> np.ndarray:
+        change_size = 2
+        gamma_changes = []
+        for change in range(change_size):
+            mRNA = random.choice(list(self.gammas.keys()))
+            miRNA = random.choice(list(self.gammas[mRNA].keys()))
+            multiplier = np.random.uniform(5, 50.0)
+            new_value = self.gammas[mRNA][miRNA] * multiplier
+            gamma_changes.append((mRNA, miRNA, new_value))
+
+        new_gammas = generate_modified_gammas(deepcopy(self.gammas), gamma_changes)
+        return new_gammas
+
+    def generate_changes_gamma_removal_method(self, test: int) -> np.ndarray:
+        change_size = 3
+        gamma_changes = []
+        for change in range(change_size):
+            mRNA = random.choice(list(self.gammas.keys()))
+            miRNA = random.choice(list(self.gammas[mRNA].keys()))
+            gamma_changes.append((mRNA, miRNA, 0))
+
+        new_gammas = generate_modified_gammas(deepcopy(self.gammas), gamma_changes)
+        return new_gammas
+
+    def post_processing(self, run_type: str):
+        self.matrices[run_type] = self.compute_matrix(self.tests[run_type])
+        Esti.post_processing(self, run_type)
+
+    def compute_matrix(self, tests) -> np.ndarray:
+        matrix = np.empty([self.number_of_tests, self.estimate_size])
+        for i in range(self.number_of_tests - 1):
+            matrix[i] = tests[i + 1][self.n:] - tests[i][self.n:]
+        matrix[-1] = tests[-1][self.n:] - tests[0][self.n:]
+        return matrix
+
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+        tests = self.tests[run_type]
+        number_of_rows = end_index - start_index
+        matrix = np.empty([number_of_rows, 2 * self.n])
+        for row in range(start_index, end_index):
+            matrix[row - start_index] = tests[(row + 1) % number_of_rows] - tests[row]
+        return matrix
+
+
+class NewGammaTest(RateTest):
+    test_type = "gamma"
+
+    def __init__(self, x: int, y: int,
+                 ks: np.ndarray, mus: np.ndarray, gammas: dict, real_vector,
+                 deterministic_solver=None, file_writer=None):
+
+        RateTest.__init__(self, x, y, ks, mus, gammas, deterministic_solver, file_writer)
+        self.number_of_tests = 2 * self.n
+        self.number_of_changes = self.n
+
     def generate_changes(self, change_type: int=0):
         change_set = []
         if change_type == 0:
@@ -185,6 +269,7 @@ class GammaTest(RateTest, Esti):
             change_set.append((None, new_gammas))
         return change_set
 
+    # Generates changes by choosing a particular mRNA, and modifying all of its interaction rates
     def generate_changes_mrna_method(self, test: int):
         mRNA = test % self.x
         gamma_changes = []
@@ -219,18 +304,7 @@ class GammaTest(RateTest, Esti):
         new_gammas = generate_modified_gammas(deepcopy(self.gammas), gamma_changes)
         return new_gammas
 
-    def post_processing(self, run_type: str):
-        self.matrices[run_type] = self.compute_matrix(self.tests[run_type])
-        Esti.post_processing(self, run_type)
-
-    def compute_matrix(self, tests) -> np.ndarray:
-        matrix = np.empty([self.number_of_tests, self.estimate_size])
-        for i in range(self.number_of_tests - 1):
-            matrix[i] = tests[i + 1][self.n:] - tests[i][self.n:]
-        matrix[-1] = tests[-1][self.n:] - tests[0][self.n:]
-        return matrix
-
-    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int):
+    def prepare_rows_for_matrix(self, run_type: str, start_index: int, end_index: int) -> np.ndarray:
         tests = self.tests[run_type]
         number_of_rows = end_index - start_index
         matrix = np.empty([number_of_rows, 2 * self.n])
@@ -243,7 +317,7 @@ class LambdaTest(RateTest):
 
     test_type = "lambda"
 
-    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray, real_vector,
+    def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: np.ndarray,
                  deterministic_solver=None, file_writer=None,
                  knockout=-1, creation_rate_changes=None):
         if knockout is -1:
@@ -259,8 +333,6 @@ class LambdaTest(RateTest):
         self.number_of_tests = 4 * self.n
         self.number_of_changes = self.n
         self.number_of_rows = int(self.number_of_tests / 2)
-        self.wild_tests = {}
-        self.knockout_tests = {}
         self.change_sets = self.generate_changes()
 
     # Predetermines all creation rate changes for this network.
@@ -276,7 +348,6 @@ class LambdaTest(RateTest):
                 change_size = (change_size + 1) % 5
                 change_iterator = combinations(list(self.creation_rate_changes), change_size)
                 next_change = next(change_iterator)
-            print("Next change: {0}".format(next_change))
 
             actual_changes = []
             for change_set in next_change:
@@ -314,16 +385,16 @@ class LambdaTest(RateTest):
         tests = self.tests[run_type]
         number_of_rows = end_index - start_index
 
-        diff_matrix = np.empty([self.number_of_rows, 2 * self.n])
+        difference_matrix = np.empty([self.number_of_rows, 2 * self.n])
         # Compute the differences between wild type tests and corresponding knockout tests.+
         for row in range(self.number_of_rows):
             # Wild type tests are in even rows, knockout tests are in odd rows.
             tests[row * 2 + 1][self.knockout] = 0
-            diff_matrix[row] = tests[row * 2] - tests[row * 2 + 1]
+            difference_matrix[row] = tests[row * 2] - tests[row * 2 + 1]
 
         matrix = np.empty([number_of_rows, 2 * self.n])
         for row in range(start_index, end_index):
-            matrix[row - start_index] = diff_matrix[(row + 1) % number_of_rows] - diff_matrix[row]
+            matrix[row - start_index] = difference_matrix[(row + 1) % number_of_rows] - difference_matrix[row]
         set_trace()
         return matrix
 

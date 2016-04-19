@@ -1,6 +1,7 @@
 import numpy as np
 from pdb import set_trace
 
+
 def get_sub_matrix(rows, columns, matrix):
     x = len(columns)
     y = len(rows)
@@ -21,8 +22,9 @@ def set_sub_matrix(rows, columns, matrix, sub_matrix):
 
 
 def estimate_parameters(matrix) -> tuple:
-    u, svs, v = np.linalg.svd(matrix, full_matrices=True)
-    # We are dealing with overdetermined systems homogeneous systems. The best solution is the column
+    set_trace()
+    u, singular_values, v = np.linalg.svd(matrix, full_matrices=True)
+    # We are dealing with overdetermined homogeneous systems. The best solution is the column
     # of v that corresponds to the lowest singular value. Because singular values are
     # in descending order, this is always the last column.
     nullspace = v[-1]
