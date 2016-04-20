@@ -2,13 +2,13 @@ import random
 from copy import deepcopy
 from pdb import set_trace
 from typing import Dict, List, Callable, Tuple
+from scipy.stats import truncnorm
 import numpy as np
 
-from .Calculations import get_sub_matrix
 import ceRNA.RateTests as RateTests
 import ceRNA.Estimators as Estimators
 import ceRNA.NetworkFiles as NetworkFiles
-from .Simulate import base_network_ode_solution, burst_network_ode_solution
+import ceRNA.Simulate as Simulate
 
 
 class Network:
@@ -34,30 +34,31 @@ class Network:
         # A vector containing (k_1,...,mu_1...), i.e. the true birth and death rates for the network.
         self.real_vector = np.concatenate((self.ks, self.mus), axis=0)
 
-        self.full_estimators = []  # type: List[Tuple[]]
-        self.decay_estimators = []
+        self.full_estimators = []  # type: List[Tuple[Tuple[str, str, int, int, int], Estimators.Estimator]]
+        self.decay_estimators = []  # type: List[Tuple[Tuple[str, str, int, int, int], Estimators.Estimator]]
 
         self.rate_tests = {"wild": [], "gamma": [], "lambda": [], "knockout": []}  # type: Dict[str: List[RateTests.RateTest]]
 
-        self.simple_decay_estimators = {}
+        self.common_decay_estimators = {"gamma": [], "lambda": []}  # type: Dict[str, List[Tuple[Tuple[str, str, int, int, int], Estimators.Estimator]]]
+
+        self.common_full_estimators = {"kg": [], "kl": []}  # type: Dict[str, List[Tuple[Tuple[str, str, int, int, int], Estimators.Estimator]]]
 
     # Returns a function that solves  the coupled equations d/dt <m_i> for all species i.
     def get_deterministic_solver(self):
-        return base_network_ode_solution
+        return Simulate.base_network_ode_solution
 
-    # TODO: Testing
+    # Return a function which writes a description of a network to a file.
+    # Used to generate psc files for simulating a rate test.
     def get_file_writer(self) -> Callable[..., type(None)]:
         return NetworkFiles.get_base_network_writer(self.x, self.y)
 
-    # TODO: Testing
-    def add_test(self, test_type_name: str):
-        test_type = self.test_types_mapping[test_type_name]
-        new_test = test_type(self.x, self.y, self.ks, self.mus, self.gammas, self.real_vector[self.n:],
+    def add_test(self, test_type: str):
+        rate_test_class = self.test_types_mapping[test_type]
+        rate_test = rate_test_class(self.x, self.y, self.ks, self.mus, self.gammas, self.real_vector[self.n:],
                              self.deterministic_solver)
-        new_test.setup()
-        self.rate_tests[test_type_name].append(new_test)
+        rate_test.setup()
+        self.rate_tests[test_type].append(rate_test)
 
-    # TODO: Testing
     # Takes a set of test runs, and combines some of the runs from each test in a specified way.
     def combine_tests(self, number_of_rows: int, tests_to_use: List[Tuple[str, str, int, int, int]]) -> np.ndarray:
         combined_tests = np.empty([number_of_rows, 2 * self.n])
@@ -99,54 +100,18 @@ class Network:
         number_of_rows = 2 * self.n
         tests_to_use = [(test_type, simulation_type, test_index, 0, 2 * self.n)]
         decay_estimator = self.add_decay_estimator(number_of_rows, tests_to_use)
-
-    def setup(self):
-        self.wild_type_test.setup()
-        self.knockout_test.setup()
-
-    # TODO: Testing
-    # Generates both arrival and decay rate parameters.
-    @staticmethod
-    def generate_arrival_and_decay_parameters(x: int, y: int,
-                                              m_mean: float=10,
-                                              m_var: float=0.5,
-                                              s_mean: float=10,
-                                              s_var: float=0.5) -> np.ndarray:
-        parameters = np.zeros(x + y)
-        parameters[:x] = np.random.normal(m_mean, m_var, x)
-        parameters[:y] = np.random.normal(s_mean, s_var, y)
-
-        return parameters
-
-    # TODO: Testing
-    # Generates interaction rate parameters
-    @staticmethod
-    def generate_gamma_parameters(x: int, y: int):
-        gammas = {}
-
-        for i in range(x):
-            gammas[i] = {}
-            for j in range(x, x+y):
-                value = np.random.normal(1.25, 0.1)
-                # value = 2.6
-                gammas[i][j] = value
-                if j not in gammas:
-                    gammas[j] = {}
-                gammas[j][i] = value
-
-        return gammas
+        self.common_decay_estimators[test_type].append(decay_estimator)
 
     # Generates
     @staticmethod
     def generate_parameters(x: int, y: int):
         n = x + y
         gammas = {}
-        ks = np.zeros(x + y)
-        mus = np.zeros(x + y)
+
+        ks = np.random.normal(10, 0.5, size=n)
+        mus = np.random.normal(10, 0.5, size=n)
 
         for i in range(x):
-            ks[i] = np.random.normal(10, 0.5)
-            # ks[i] = 6
             mus[i] = np.random.normal(10, 0.5)
             # mus[i] = 5
             gammas[i] = {}
@@ -158,12 +123,6 @@ class Network:
                     gammas[j] = {}
                 gammas[j][i] = value
 
-        for i in range(x, n):
-            ks[i] = np.random.normal(10, 0.5)
-            # ks[i] = 5
-            mus[i] = np.random.normal(10, 0.5)
-        # mus[i] = 5
-
         #  Remove some gamma values
         legal = False
         while not legal:
@@ -174,12 +133,12 @@ class Network:
 
     @staticmethod
     def create_test_containers() -> Dict:
-        tests = {}
-        tests["wild"] = {"ode": [], "sim": []}
-        tests["gamma"] = {"ode": [], "sim": []}
-        tests["lambda"] = {"ode": [], "sim": []}
-        tests["knockout"] = {"ode": [], "sim": []}
-
+        tests = {
+            "wild" : {"ode": [], "sim": []},
+            "gamma": {"ode": [], "sim": []},
+            "lambda": {"ode": [], "sim": []},
+            "knockout": {"ode": [], "sim": []}
+        }
         return tests
 
     # Generates gamma parameters for models with very large gamma values.
@@ -219,24 +178,29 @@ class Network:
         return ks, mus, gammas
 
     @staticmethod
-    def cull_gammas(x, y, gammas):
-        gammas_list = []
-        for i in range(x):
-            for j in range(x, x + y):
-                gammas_list.append((i, j))
+    def cull_gammas(x: int, y: int, gammas: dict) -> dict:
+        legal = False
+        temp_gammas = {}
+        while not legal:
+            temp_gammas = deepcopy(gammas)
+            gammas_list = []
+            for i in range(x):
+                for j in range(x, x + y):
+                    gammas_list.append((i, j))
 
-        # Choose how many and which connections to cull
-        number_to_cull = int(.1 * (x * y))
-        connections_to_cull = random.sample(gammas_list, number_to_cull)
+            # Choose how many and which connections to cull
+            number_to_cull = int(.1 * (x * y))
+            connections_to_cull = random.sample(gammas_list, number_to_cull)
 
-        # Cull the chosen connections
-        for connection in connections_to_cull:
-            del gammas[connection[0]][connection[1]]
-            del gammas[connection[1]][connection[0]]
-        return gammas
+            # Cull the chosen connections
+            for connection in connections_to_cull:
+                del temp_gammas[connection[0]][connection[1]]
+                del temp_gammas[connection[1]][connection[0]]
+            legal = Network.check_network_legality(x, y, temp_gammas)
+        return temp_gammas
 
     @staticmethod
-    def check_network_legality(x, y, gammas):
+    def check_network_legality(x: int, y: int, gammas: dict):
         added = []
         shadowed = [0]
         while shadowed:
@@ -244,7 +208,7 @@ class Network:
                 shadowed.remove(node)
                 added.append(node)
                 for neighbor in gammas[node].keys():
-                    if not neighbor in shadowed and not neighbor in added:
+                    if neighbor not in shadowed and neighbor not in added:
                         shadowed.append(neighbor)
         added.sort()
         return added == list(range(x + y))
@@ -256,24 +220,27 @@ class BurstNetwork(Network):
                  alphas: np.ndarray, betas: np.ndarray):
         self.alphas = alphas
         self.betas = betas
+
+        # The equilibrium probability of each promoter state being on.
+        # vec[i] is the probability that species i is in the on state at equilibrium
+        self.equilibrium_probability = self.alphas / (self.alphas + self.betas)
+
         Network.__init__(self, x, y, ks, mus, gammas)
 
-    def get_deterministic_solver(self):
-        return base_network_ode_solution
+        # Multiply all birth rates by their equilibrium probabilities. Leave death rates alone.
+        np.multiply(self.real_vector, np.concatenate((self.equilibrium_probability, np.ones(self.n))), self.real_vector)
 
-    # TODO: return the actual file writer
+    def get_deterministic_solver(self):
+        return Simulate.get_burst_network_solver(self.equilibrium_probability, self.alphas, self.betas)
+
     def get_file_writer(self):
         return NetworkFiles.get_burst_network_writer(self.x, self.y, self.alphas, self.betas)
 
-    def add_test(self, test_type_name: str):
-        pass
-
-    def add_full_estimator(self, real_vector: np.ndarray, number_of_rows: int, tests_to_use: list, estimate_name: str):
-        return super().add_full_estimator(real_vector, number_of_rows, tests_to_use, estimate_name)
-
     @staticmethod
-    def generate_burst_parameters(x, y) -> tuple:
-        pass
+    def generate_burst_parameters_basic(x, y) -> Tuple[np.ndarray, np.ndarray]:
+        alphas = truncnorm.rvs(0,1,size=(x+y))
+        betas = truncnorm.rvs(0,1,size=(x+y))
+        return alphas, betas
 
 
 class ComplexNetwork(BurstNetwork):
@@ -283,7 +250,7 @@ class ComplexNetwork(BurstNetwork):
         self.betas = betas
         BurstNetwork.__init__(self, x, y, ks, mus, gammas)
 
-    def add_test(self, test_type_name: str):
+    def add_test(self, test_type: str):
         pass
 
     @staticmethod

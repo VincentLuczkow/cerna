@@ -4,6 +4,7 @@ import random
 from ceRNA import Network
 from pdb import set_trace
 
+
 def main():
     # test_type = argv[1]
     gamma_relative_error = 0
@@ -17,7 +18,8 @@ def main():
 
         # Set up network
         ks, mus, gammas = Network.Network.generate_parameters(x, y)
-        current_network = Network.Network(x, y, ks, mus, gammas)
+        alphas, betas = Network.BurstNetwork.generate_burst_parameters_basic(x, y)
+        current_network = Network.BurstNetwork(x, y, ks, mus, gammas, alphas, betas)
         current_network.add_test("wild")
         current_network.add_test("lambda")
         current_network.add_test("gamma")
