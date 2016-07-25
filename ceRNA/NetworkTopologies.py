@@ -42,7 +42,7 @@ def simple_network(x: int, y: int, network_type: str):
 
             if network_type != Constants.NetworkModels.SCOM:
                 # Generate asymmetric dissociation parameters
-                pass
+                parameters = np.array([10,20])
 
     network_class = Networks.network_mapping[network_type]
 

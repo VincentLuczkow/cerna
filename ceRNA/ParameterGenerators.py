@@ -40,7 +40,7 @@ def generate_type_differentiated_rates(x: int, y: int,
 
 def generate_iid_gammas(x: int, y: int,
                         distribution: stats.rv_continuous=stats.truncnorm,
-                        parameters: np.ndarray=np.array([5, 15])) -> np.ndarray:
+                        parameters: np.ndarray=np.array([1, 5])) -> np.ndarray:
     """
     Generates iid gamma rates between each mRNA and miRNA. Rates are drawn from the given distribution with the given
     parameters.
