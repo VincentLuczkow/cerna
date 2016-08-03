@@ -6,7 +6,7 @@ import scipy.stats as stats
 import numpy as np
 from itertools import product
 
-import ceRNA.RateTests as RateTests
+import ceRNA.TestTypes as TestTypes
 import ceRNA.Estimators as Estimators
 import ceRNA.NetworkFiles as NetworkFiles
 import ceRNA.Simulate as Simulate
@@ -16,10 +16,10 @@ import ceRNA.Constants as Constants
 class Network:
 
     test_types_mapping = {
-        Constants.RateTests.WILD: RateTests.WildTypeTest,
-        Constants.RateTests.GAMMA: RateTests.GammaTest,
-        Constants.RateTests.LAMBDA: RateTests.LambdaTest,
-        Constants.RateTests.KNOCKOUT: RateTests.KnockoutTest
+        Constants.RateTests.WILD.value: TestTypes.WildTypeTest,
+        Constants.RateTests.GAMMA.value: TestTypes.GammaTest,
+        Constants.RateTests.LAMBDA.value: TestTypes.LambdaTest,
+        Constants.RateTests.KNOCKOUT.value: TestTypes.KnockoutTest
     }                                                                               # type: Dict[str, RateTests.RateTest]
 
     def __init__(self, x: int, y: int, ks: np.ndarray, mus: np.ndarray, gammas: dict):
@@ -36,10 +36,10 @@ class Network:
         # A vector containing (k_1,...,mu_1...), i.e. the true birth and death rates for the network.
         self.real_vector = np.concatenate((self.ks, self.mus), axis=0)
         self.rate_tests = {
-            Constants.RateTests.WILD: [],
-            Constants.RateTests.GAMMA: [],
-            Constants.RateTests.LAMBDA: [],
-            Constants.RateTests.KNOCKOUT: []
+            Constants.RateTests.WILD.value: [],
+            Constants.RateTests.GAMMA.value: [],
+            Constants.RateTests.LAMBDA.value: [],
+            Constants.RateTests.KNOCKOUT.value: []
         }
         # type: Dict[str: List[RateTests.RateTest]]
         self.full_estimators = []
@@ -51,8 +51,8 @@ class Network:
         #self.gamma_tests = {"sim": [], "ode": []}
         #self.lambda_tests = {"sim": [], "ode": []}\
 
-        self.common_decay_estimators = {Constants.RateTests.GAMMA: {"sim": [], "ode": []},
-                                        Constants.RateTests.LAMBDA: {"sim": [], "ode": []}}
+        self.common_decay_estimators = {Constants.RateTests.GAMMA.value: {"sim": [], "ode": []},
+                                        Constants.RateTests.LAMBDA.value: {"sim": [], "ode": []}}
         # type: Dict[str, List[Tuple[Tuple[str, str, int, int, int], Estimators.Estimator]]]
         self.common_full_estimators = {"kg": [], "kl": []}
         # type: Dict[str, List[Tuple[Tuple[str, str, int, int, int], Estimators.Estimator]]]
@@ -67,12 +67,13 @@ class Network:
         return NetworkFiles.get_base_network_writer(self.x, self.y)
 
     # Adds a test to the current network.
-    def add_test(self, test_type: str, options=None):
-        rate_test_class = self.test_types_mapping[test_type]
+    def add_test(self, test_type: str, simulation_type: str="ode"):
+        rate_test_class = TestTypes.test_types_mapping[test_type]
         rate_test = rate_test_class(self.x, self.y, self.ks, self.mus, self.gammas,
                                     self.deterministic_solver,
-                                    self.file_writer)
-        rate_test.setup()
+                                    self.file_writer)  # type: TestTypes.RateTest
+        # rate_test.setup()
+        rate_test.run_deterministic_test()
         self.rate_tests[test_type].append(rate_test)
 
     # Takes a set of test runs, and combines some of the runs from each test in a specified way.
@@ -345,10 +346,10 @@ class CatalyticComplexNetwork(StoichiometricComplexNetwork):
 
 
 network_mapping = {
-    Constants.NetworkModels.BASE: Network,
-    Constants.NetworkModels.BURST: BurstNetwork,
-    Constants.NetworkModels.SCOM: StoichiometricComplexNetwork,
-    Constants.NetworkModels.CCOM: CatalyticComplexNetwork
+    Constants.NetworkModels.BASE.value: Network,
+    Constants.NetworkModels.BURST.value: BurstNetwork,
+    Constants.NetworkModels.SCOM.value: StoichiometricComplexNetwork,
+    Constants.NetworkModels.CCOM.value: CatalyticComplexNetwork
 }  # type: Dict[int, Network]
 
 

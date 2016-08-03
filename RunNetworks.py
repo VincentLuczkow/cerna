@@ -4,12 +4,18 @@ import sys
 import numpy as np
 
 import ceRNA.Constants as Constants
-import ceRNA.Networks as Networks
+import ceRNA.NetworkTypes as NetworkTypes
 import ceRNA.NetworkTopologies as NetworkTopologies
+import ceRNA.TestTypes as RateTests
 
 
 def main():
-    run_tests(test_type=Constants.RateTests.LAMBDA)
+    network_type = int(sys.argv[1])
+    network_topology = int(sys.argv[2])
+    test_type = int(sys.argv[3])
+    run_tests(network_type=network_type,
+              network_topology_name=network_topology,
+              test_type=Constants.RateTests.LAMBDA.value)
     pass
 
 
@@ -17,18 +23,18 @@ def record_results(output_file_name: str):
     pass
 
 
-def run_tests(number_of_networks: int=50,
+def run_tests(number_of_networks: int=5,
               record: bool=False,
-              network_type: str=Constants.NetworkModels.BASE,
-              network_topology_name: int=Constants.NetworkTopologies.SIMPLE,
-              test_type: str=Constants.RateTests.GAMMA,
+              network_type: int=Constants.NetworkModels.BASE.value,
+              network_topology_name: int=Constants.NetworkTopologies.SIMPLE.value,
+              test_type: int=Constants.RateTests.GAMMA.value,
               output_file_name: str= ""):
 
     relative_error = np.zeros(number_of_networks)
     for test in range(number_of_networks):
         print("Test {}".format(test))
-        x = random.randrange(5, 25)
-        y = random.randrange(5, 25)
+        x = random.randrange(5, 20)
+        y = random.randrange(5, 20)
 
         # Set up network
         network_topology = NetworkTopologies.network_topology_mapping[network_topology_name]

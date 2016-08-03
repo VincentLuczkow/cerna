@@ -42,7 +42,6 @@ def get_burst_network_solver(p_on: np.ndarray, alphas: np.ndarray, betas: np.nda
             # Component from death processes.
             np.subtract(derivatives, np.multiply(mus, species_means), derivatives)
             # Component from mRNA - miRNA interactions.
-            set_trace()
             np.subtract(derivatives, np.multiply(np.dot(gammas, species_means), species_means), derivatives)
             return derivatives
 

@@ -9,7 +9,7 @@ from typing import List, Tuple, Callable, Dict
 
 import numpy as np
 
-from .Constants import GammaChange
+import ceRNA.Constants as Constants
 import ceRNA.Simulate as Simulate
 
 
@@ -45,6 +45,12 @@ class RateTest:
 
     def setup(self):
         self.tests["ode"] = self.deterministic_solution()
+        self.psc_file_names, self.results_file_names = self.create_psc_files()
+
+    def run_deterministic_test(self):
+        self.tests["ode"] = self.deterministic_solution()
+
+    def setup_simulation(self):
         self.psc_file_names, self.results_file_names = self.create_psc_files()
 
     def generate_changes(self, change_type: int=0):
@@ -184,11 +190,11 @@ class GammaTest(RateTest):
 
     def generate_changes(self, change_type: int=0) -> List[Tuple[np.ndarray, np.ndarray]]:
         change_set = []
-        if change_type == GammaChange.MRNA_METHOD:
+        if change_type == Constants.GammaChange.MRNA_METHOD:
             change_generator = self.generate_changes_mrna_method
-        elif change_type == GammaChange.GAMMA_SCALING_METHOD:
+        elif change_type == Constants.GAMMA_SCALING_METHOD:
             change_generator = self.generate_changes_gamma_scaling_method
-        elif change_type == GammaChange.GAMMA_REMOVAL_METHOD:
+        elif change_type == Constants.GammaChange.GAMMA_REMOVAL_METHOD:
             change_generator = self.generate_changes_gamma_removal_method
         else:
             change_generator = self.generate_changes_gamma_removal_method
@@ -376,3 +382,10 @@ def generate_modified_gammas(gammas: dict, gamma_changes: list):
         gammas[gamma_change[0]][gamma_change[1]] = gamma_change[2]
         gammas[gamma_change[1]][gamma_change[0]] = gamma_change[2]
     return gammas
+
+test_types_mapping = {
+    Constants.RateTests.WILD.value: WildTypeTest,
+    Constants.RateTests.GAMMA.value: GammaTest,
+    Constants.RateTests.LAMBDA.value: LambdaTest,
+    Constants.RateTests.KNOCKOUT.value: KnockoutTest
+}

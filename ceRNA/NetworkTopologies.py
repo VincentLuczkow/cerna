@@ -7,8 +7,10 @@ import numpy as np
 from typing import Dict, Callable
 
 import ceRNA.ParameterGenerators as ParameterGenerators
-import ceRNA.Networks as Networks
+import ceRNA.NetworkTypes as NetworkTypes
 import ceRNA.Constants as Constants
+
+import pdb
 
 
 def simple_network(x: int, y: int, network_type: str):
@@ -28,7 +30,7 @@ def simple_network(x: int, y: int, network_type: str):
 
     args = [x, y, ks, mus, gammas]
 
-    if network_type != Constants.NetworkModels.BASE:
+    if network_type != Constants.NetworkModels.BASE.value:
         # Generate burst parameters.
         parameters = np.array([5, 10])
         alphas = ParameterGenerators.generate_iid_species_rates(x, y, species_distribution, parameters)
@@ -36,15 +38,15 @@ def simple_network(x: int, y: int, network_type: str):
         betas= ParameterGenerators.generate_iid_species_rates(x, y, species_distribution, parameters)
         args.extend([alphas, betas])
 
-        if network_type != Constants.NetworkModels.BURST:
+        if network_type != Constants.NetworkModels.BURST.value:
             # Generate complex parameters
             parameters = np.array([10, 20])
 
-            if network_type != Constants.NetworkModels.SCOM:
+            if network_type != Constants.NetworkModels.SCOM.value:
                 # Generate asymmetric dissociation parameters
                 parameters = np.array([10,20])
 
-    network_class = Networks.network_mapping[network_type]
+    network_class = NetworkTypes.network_mapping[network_type]
 
     # Generate the network
     network = network_class(*args)
@@ -68,5 +70,7 @@ def generate_large_gamma_network(x: int, y: int, network_type: str):
 
 
 network_topology_mapping = {
-    Constants.NetworkTopologies.SIMPLE : simple_network
+    Constants.NetworkTopologies.SIMPLE.value : simple_network,
+    Constants.NetworkTopologies.DIFFERENTIATED.value: differentiated_network
 }  # type: Dict[int, Callable]
+

@@ -8,10 +8,10 @@ class GammaChange(enum.Enum):
 
 
 class RateTests(enum.Enum):
-    WILD = "wild"
-    GAMMA = "gamma"
-    LAMBDA = "lambda"
-    KNOCKOUT = "knockout"
+    WILD = 0
+    GAMMA = 1
+    LAMBDA = 2
+    KNOCKOUT = 3
 
 
 class NetworkModels(enum.Enum):
